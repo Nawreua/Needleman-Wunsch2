@@ -2,6 +2,7 @@
 
 import argparse
 import sys
+from math import inf
 
 ADN_ALPHABET = 'ATGC'
 ARN_ALPHABET = 'AUGC'
@@ -147,14 +148,29 @@ def classify_sequence(sequence):
     return None
 
 
+def compute_local_possible_score(score, evaluator, i, j, insertion=True):
+    k = 1
+    top = i if insertion else j
+    max_k = -inf
+    max_score = -inf
+    while k <= top:
+        local_score = evaluator(k) + (score[i - k][j]
+                                      if insertion else score[i][j - k])
+        if local_score > max_score:
+            max_k = k
+            max_score = local_score
+        k += 1
+    return (max_score, max_k)
+
+
 def compute_local_score(subsitution_score, insertion_score, deletion_score, i,
                         j):
-    if subsitution_score >= insertion_score \
-            and subsitution_score >= deletion_score:
+    if subsitution_score >= insertion_score[0] \
+            and subsitution_score >= deletion_score[0]:
         return (subsitution_score, (i - 1, j - 1))
-    if insertion_score >= deletion_score:
-        return (insertion_score, (i - 1, j))
-    return (deletion_score, (i, j - 1))
+    if insertion_score[0] >= deletion_score[0]:
+        return (insertion_score[0], (i - insertion_score[1], j))
+    return (deletion_score[0], (i, j - deletion_score[1]))
 
 
 def score_sequences(x, y, evaluator, subsitution, alphabet):
@@ -163,18 +179,23 @@ def score_sequences(x, y, evaluator, subsitution, alphabet):
     score = [[0. for y in range(N + 1)] for x in range(M + 1)]
     backtrack = [[0. for y in range(N + 1)] for x in range(M + 1)]
     for i in range(M + 1):
-        score[i][0] = i * evaluator.e
-        backtrack[i][0] = (i - 1, 0)
+        score[i][0] = evaluator(i)
+        backtrack[i][0] = (0, 0)
     for j in range(N + 1):
-        score[0][j] = j * evaluator.e
-        backtrack[0][j] = (0, j - 1)
+        score[0][j] = evaluator(j)
+        backtrack[0][j] = (0, 0)
     backtrack[0][0] = None
     for i in range(1, M + 1):
         for j in range(1, N + 1):
-            local_score = compute_local_score(
-                subsitution[alphabet.index(x[i - 1])][alphabet.index(y[j - 1])]
-                + score[i - 1][j - 1], evaluator.e + score[i - 1][j],
-                evaluator.e + score[i][j - 1], i, j)
+            subsitution_score = subsitution[alphabet.index(
+                x[i - 1])][alphabet.index(y[j - 1])] + score[i - 1][j - 1]
+            insertion_score = compute_local_possible_score(
+                score, evaluator, i, j)
+            deletion_score = compute_local_possible_score(
+                score, evaluator, i, j, False)
+            local_score = compute_local_score(subsitution_score,
+                                              insertion_score, deletion_score,
+                                              i, j)
             score[i][j] = local_score[0]
             backtrack[i][j] = local_score[1]
     return (score, backtrack)
@@ -186,17 +207,22 @@ def backtrack_sequences(x, y, backtrack):
     aligned_x = []
     aligned_y = []
     while backtrack[u][v] is not None:
-        (bu, bv) = backtrack[u][v]
-        if u - 1 == bu:
+        (b_u, b_v) = backtrack[u][v]
+        if u - 1 == b_u and v - 1 == b_v:
             aligned_x.append(x[u - 1])
-        else:
-            aligned_x.append('-')
-        if v - 1 == bv:
             aligned_y.append(y[v - 1])
-        else:
-            aligned_y.append('-')
-        u = bu
-        v = bv
+        if u == b_u:
+            k = v - b_v
+            aligned_x.append('-' * k)
+            for indice in range(v, v - k, -1):
+                aligned_y.append(y[indice - 1])
+        if v == b_v:
+            k = u - b_u
+            aligned_y.append('-' * k)
+            for indice in range(u, u - k, -1):
+                aligned_x.append(x[indice - 1])
+        u = b_u
+        v = b_v
     aligned_x.reverse()
     aligned_y.reverse()
     return (''.join(aligned_x), ''.join(aligned_y))
