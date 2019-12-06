@@ -3,6 +3,8 @@
 import argparse
 import sys
 
+ADN_ALPHABET = 'ATGC'
+ARN_ALPHABET = 'AUGC'
 NUCLEID_MATRIX = [
     [1., -1., -1., -1.],
     [-1., 1., -1., -1.],
@@ -107,6 +109,10 @@ PROTEIN_MATRIX = [
 ]
 
 
+def eprint(*args, **kwargs):
+    print(*args, file=sys.stderr, **kwargs)
+
+
 class EvaluationFunctor():
     def __init__(self, tuple_value):
         self.e = tuple_value[0]
@@ -134,28 +140,66 @@ def evaluate_sequence(sequence, alphabet):
 
 
 def classify_sequence(sequence):
-    alphabets = ['ATGC', 'AUGC', PROTEIN_ALPHABET]
+    alphabets = [ADN_ALPHABET, ARN_ALPHABET, PROTEIN_ALPHABET]
     for alphabet in alphabets:
         if evaluate_sequence(sequence, alphabet):
             return alphabet
     return None
 
 
+def compute_local_score(subsitution_score, insertion_score, deletion_score, i,
+                        j):
+    if subsitution_score >= insertion_score \
+            and subsitution_score >= deletion_score:
+        return (subsitution_score, (i - 1, j - 1))
+    if insertion_score >= deletion_score:
+        return (insertion_score, (i - 1, j))
+    return (deletion_score, (i, j - 1))
+
+
 def score_sequences(x, y, evaluator, subsitution, alphabet):
     M = len(x)
     N = len(y)
     score = [[0. for y in range(N + 1)] for x in range(M + 1)]
+    backtrack = [[0. for y in range(N + 1)] for x in range(M + 1)]
     for i in range(M + 1):
         score[i][0] = i * evaluator.e
+        backtrack[i][0] = (i - 1, 0)
     for j in range(N + 1):
         score[0][j] = j * evaluator.e
+        backtrack[0][j] = (0, j - 1)
+    backtrack[0][0] = None
     for i in range(1, M + 1):
         for j in range(1, N + 1):
-            score[i][j] = max(
-                subsitution[alphabet.index(x[i - 1])][alphabet.index(
-                    y[j - 1])] + score[i - 1][j - 1],
-                evaluator.e + score[i - 1][j], evaluator.e + score[i][j - 1])
-    return score
+            local_score = compute_local_score(
+                subsitution[alphabet.index(x[i - 1])][alphabet.index(y[j - 1])]
+                + score[i - 1][j - 1], evaluator.e + score[i - 1][j],
+                evaluator.e + score[i][j - 1], i, j)
+            score[i][j] = local_score[0]
+            backtrack[i][j] = local_score[1]
+    return (score, backtrack)
+
+
+def backtrack_sequences(x, y, backtrack):
+    u = len(x)
+    v = len(y)
+    aligned_x = []
+    aligned_y = []
+    while backtrack[u][v] is not None:
+        (bu, bv) = backtrack[u][v]
+        if u - 1 == bu:
+            aligned_x.append(x[u - 1])
+        else:
+            aligned_x.append('-')
+        if v - 1 == bv:
+            aligned_y.append(y[v - 1])
+        else:
+            aligned_y.append('-')
+        u = bu
+        v = bv
+    aligned_x.reverse()
+    aligned_y.reverse()
+    return (''.join(aligned_x), ''.join(aligned_y))
 
 
 if __name__ == "__main__":
@@ -180,16 +224,21 @@ if __name__ == "__main__":
     alphabet = classify_sequence(args.x)
 
     if alphabet is None or classify_sequence(args.y) != alphabet:
-        print('ALPHABET ERROR')
+        eprint('ALPHABET ERROR')
         sys.exit(1)
 
     matrix = PROTEIN_MATRIX if alphabet == PROTEIN_ALPHABET else NUCLEID_MATRIX
 
-    if args.cmd == "score":
-        score = score_sequences(args.x, args.y, evaluator, matrix, alphabet)
+    if args.cmd == 'score':
+        (score, _) = score_sequences(args.x, args.y, evaluator, matrix,
+                                     alphabet)
         print(score[len(args.x)][len(args.y)])
-    elif args.cmd == "align":
-        pass
+    elif args.cmd == 'align':
+        (_, backtrack) = score_sequences(args.x, args.y, evaluator, matrix,
+                                         alphabet)
+        (x, y) = backtrack_sequences(args.x, args.y, backtrack)
+        print(x)
+        print(y)
     else:
-        print('COMMAND ERROR')
+        eprint('COMMAND ERROR')
         sys.exit(1)
