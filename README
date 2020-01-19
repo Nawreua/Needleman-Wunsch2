@@ -5,9 +5,11 @@ A implementation of the Needleman-Wunsch algorithm for 2 sequences.
 ## How to run the project
 
 ```
+$ ./src/nwalign.py [--gamma=e,o] cmd x y
 ```
 
 ## How to export the project
 
 ```
+$ make export
 ```
